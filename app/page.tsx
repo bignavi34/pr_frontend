@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FaGithub, FaCode, FaSpinner, FaMoon, FaSun, FaLock } from 'react-icons/fa';
+import { FaGithub, FaCode, FaSpinner, FaMoon, FaSun, FaLock, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 import { HiOutlineExternalLink } from 'react-icons/hi';
 
 interface FormData {
@@ -11,8 +11,28 @@ interface FormData {
   githubToken: string;
 }
 
+interface Issue {
+  type: string;
+  description: string;
+  location: string;
+  line: number;
+  suggestion: string;
+}
+
+interface Result {
+  results: string | null | any[];
+  file_name: string | null;
+  error: string | null;
+}
+
 interface ApiResponse {
   message: string;
+}
+
+interface NextApiResponse {
+  task_id: string;
+  result: Result;
+  status: string;
 }
 
 export default function Home() {
@@ -25,6 +45,9 @@ export default function Home() {
   const [loading, setLoading] = useState<boolean>(false);
   const [isSuccess, setIsSuccess] = useState<boolean>(true);
   const [darkMode, setDarkMode] = useState<boolean>(false);
+  const [taskData, setTaskData] = useState<NextApiResponse | null>(null);
+  const [fetchingStatus, setFetchingStatus] = useState<boolean>(false);
+  const [expandedIssues, setExpandedIssues] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
@@ -58,12 +81,99 @@ export default function Home() {
     }));
   };
 
+  // Helper function to parse and extract JSON from string if present
+  const extractJsonFromString = (text: string): any => {
+    try {
+      // Look for JSON pattern in the string
+      const jsonMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+      if (jsonMatch && jsonMatch[1]) {
+        return JSON.parse(jsonMatch[1]);
+      }
+
+      // If no JSON in code blocks, try to parse the whole string
+      return JSON.parse(text);
+    } catch (e) {
+      console.log("Not valid JSON or no JSON found in string");
+      return null;
+    }
+  };
+
+  const toggleIssueExpansion = (issueId: string) => {
+    setExpandedIssues(prev => ({
+      ...prev,
+      [issueId]: !prev[issueId]
+    }));
+  };
+
+  const fetchTaskStatus = async () => {
+    try {
+      setFetchingStatus(true);
+      const response = await fetch("http://16.16.65.132:8002/task_status/", {
+        method: 'GET',
+      });
+
+      const data = await response.json();
+      console.log('Task status data:', data);
+
+      // Create a properly structured result object
+      let resultObj: Result = {
+        results: null,
+        file_name: null,
+        error: null
+      };
+
+      // Handle nested result structures
+      if (data && typeof data === 'object') {
+        if (data.result) {
+          if (typeof data.result === 'string') {
+            resultObj.results = data.result;
+          } else if (typeof data.result === 'object') {
+            // Handle direct result properties
+            if (data.result.error !== undefined) {
+              resultObj.error = data.result.error;
+            }
+            if (data.result.file_name !== undefined) {
+              resultObj.file_name = data.result.file_name;
+            }
+
+            // Handle the case where results is an array or a string
+            if (Array.isArray(data.result.results)) {
+              resultObj.results = data.result.results;
+            } else if (typeof data.result.results === 'string') {
+              // Try to parse JSON from the string if present
+              const extractedJson = extractJsonFromString(data.result.results);
+              resultObj.results = extractedJson || data.result.results;
+            } else {
+              resultObj.results = data.result.results;
+            }
+          }
+        } else if (Array.isArray(data.results)) {
+          // Handle the case where results is directly at the top level
+          resultObj.results = data.results;
+        }
+
+        setTaskData({
+          task_id: String(data.task_id || ''),
+          status: String(data.status || ''),
+          result: resultObj
+        });
+      }
+    } catch (error) {
+      console.error("Task status error:", error);
+    } finally {
+      setFetchingStatus(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setMessage('');
+    setTaskData(null);
+    setExpandedIssues({});
 
     try {
+      // First API call to start the task
       const response = await fetch('http://16.16.65.132:5001/start_task/', {
         method: 'POST',
         headers: {
@@ -76,16 +186,189 @@ export default function Home() {
         }),
       });
 
-      const data: ApiResponse = await response.json();
-      console.log(data)
+      const data = await response.json();
       setIsSuccess(true);
-      setMessage(data.message);
+
+      // Handle the response correctly - convert to string if it's an object
+      if (typeof data === 'object') {
+        setMessage(data.message || JSON.stringify(data));
+      } else {
+        setMessage(String(data));
+      }
+
+      // Set a 10-second delay before fetching task status
+      setMessage(prev => prev + "\nFetching results after 10 seconds...");
+
+      setTimeout(() => {
+        fetchTaskStatus();
+      }, 10000);
+
     } catch (error) {
       setIsSuccess(false);
       setMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Process results to extract issues if they exist
+  const processResults = (results: any): { issues: Issue[] | null, otherData: any } => {
+    if (!results) return { issues: null, otherData: null };
+
+    // Check if results is a string that contains JSON
+    if (typeof results === 'string') {
+      const extractedJson = extractJsonFromString(results);
+      if (extractedJson && extractedJson.issues && Array.isArray(extractedJson.issues)) {
+        return {
+          issues: extractedJson.issues,
+          otherData: { ...extractedJson, issues: undefined }
+        };
+      }
+      return { issues: null, otherData: results };
+    }
+
+    // Check if results is an array with objects that might contain issues
+    if (Array.isArray(results) && results.length > 0) {
+      for (const item of results) {
+        if (typeof item === 'object' && item !== null) {
+          // Check if the item itself has an issues array
+          if (item.issues && Array.isArray(item.issues)) {
+            return {
+              issues: item.issues,
+              otherData: { ...item, issues: undefined }
+            };
+          }
+
+          // Check if the item has a results property that might contain issues
+          if (item.results) {
+            const extractedJson = typeof item.results === 'string'
+              ? extractJsonFromString(item.results)
+              : item.results;
+
+            if (extractedJson && extractedJson.issues && Array.isArray(extractedJson.issues)) {
+              return {
+                issues: extractedJson.issues,
+                otherData: { ...extractedJson, issues: undefined }
+              };
+            }
+          }
+        }
+      }
+    }
+
+    // Check if results is an object with an issues array
+    if (typeof results === 'object' && results !== null) {
+      if (results.issues && Array.isArray(results.issues)) {
+        return {
+          issues: results.issues,
+          otherData: { ...results, issues: undefined }
+        };
+      }
+    }
+
+    return { issues: null, otherData: results };
+  };
+
+  // Render issue cards with collapsible details
+  const renderIssueCards = (issues: Issue[]) => {
+    if (!issues || issues.length === 0) return null;
+
+    // Group issues by type
+    const issuesByType: Record<string, Issue[]> = {};
+    issues.forEach(issue => {
+      if (!issuesByType[issue.type]) {
+        issuesByType[issue.type] = [];
+      }
+      issuesByType[issue.type].push(issue);
+    });
+
+    return (
+      <div className="space-y-4">
+        <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+          Issues Found ({issues.length})
+        </h3>
+
+        {Object.entries(issuesByType).map(([type, typeIssues]) => (
+          <div key={type} className={`rounded-lg overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow`}>
+            <div className={`px-4 py-3 ${darkMode ? 'bg-indigo-900/50' : 'bg-indigo-100'}`}>
+              <h4 className={`font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                {type} ({typeIssues.length})
+              </h4>
+            </div>
+            <div className="p-2">
+              {typeIssues.map((issue, index) => {
+                const issueId = `${type}-${index}`;
+                const isExpanded = expandedIssues[issueId] || false;
+
+                return (
+                  <div
+                    key={issueId}
+                    className={`mb-2 p-3 rounded ${darkMode ? 'bg-gray-700/50 hover:bg-gray-700' : 'bg-gray-50 hover:bg-gray-100'} transition-colors`}
+                  >
+                    <div
+                      className="flex justify-between items-start cursor-pointer"
+                      onClick={() => toggleIssueExpansion(issueId)}
+                    >
+                      <div className="flex-1">
+                        <p className={`font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                          {issue.description}
+                        </p>
+                        <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                          Location: {issue.location} (Line {issue.line})
+                        </p>
+                      </div>
+                      <div className={`p-1 rounded-full ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                        {isExpanded ? <FaChevronUp /> : <FaChevronDown />}
+                      </div>
+                    </div>
+
+                    {isExpanded && (
+                      <div className={`mt-3 p-3 rounded ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                        <p className={`mb-2 text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                          Suggestion:
+                        </p>
+                        <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                          {issue.suggestion}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  // Format the results for display
+  const formatResults = (results: any): React.ReactNode => {
+    if (!results) return null;
+
+    // Process results to extract issues if they exist
+    const { issues, otherData } = processResults(results);
+
+    return (
+      <div className="space-y-6">
+        {issues && issues.length > 0 && renderIssueCards(issues)}
+
+        {otherData && (
+          <div className="space-y-2">
+            <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+              Additional Information
+            </h3>
+            {typeof otherData === 'object' ? (
+              <pre className="whitespace-pre-wrap bg-black/10 p-2 rounded text-sm overflow-auto">
+                {JSON.stringify(otherData, null, 2)}
+              </pre>
+            ) : (
+              <p className="whitespace-pre-wrap">{String(otherData)}</p>
+            )}
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -101,7 +384,7 @@ export default function Home() {
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="max-w-lg mx-auto"
+          className="max-w-4xl mx-auto"
         >
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center">
@@ -257,7 +540,77 @@ export default function Home() {
                 role="alert"
               >
                 <p className="font-medium">{isSuccess ? 'Success!' : 'Error'}</p>
-                <p>{message}</p>
+                <p className="whitespace-pre-line">{message}</p>
+                {fetchingStatus && (
+                  <div className="mt-2 flex items-center">
+                    <FaSpinner className="animate-spin mr-2" />
+                    <span>Fetching task status...</span>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {taskData && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.5 }}
+                className={`mt-6 p-6 rounded-lg shadow-md ${darkMode
+                  ? 'bg-indigo-900/30 border border-indigo-700 text-indigo-100'
+                  : 'bg-white border border-indigo-100 text-indigo-900'
+                  }`}
+                role="alert"
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className={`font-semibold text-lg ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                    Analysis Results
+                  </h3>
+                  <div className="flex items-center space-x-3">
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${taskData.status === 'SUCCESS'
+                        ? (darkMode ? 'bg-green-900/50 text-green-300' : 'bg-green-100 text-green-800')
+                        : taskData.status === 'PENDING'
+                          ? (darkMode ? 'bg-yellow-900/50 text-yellow-300' : 'bg-yellow-100 text-yellow-800')
+                          : (darkMode ? 'bg-red-900/50 text-red-300' : 'bg-red-100 text-red-800')
+                      }`}>
+                      {taskData.status}
+                    </span>
+                    <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      Task: {taskData.task_id}
+                    </span>
+                  </div>
+                </div>
+
+                {taskData.result && (
+                  <div className="mt-2">
+                    {taskData.result.error ? (
+                      <div className={`p-4 rounded ${darkMode ? 'bg-red-900/20' : 'bg-red-50'}`}>
+                        <p className={`font-medium ${darkMode ? 'text-red-300' : 'text-red-700'}`}>Error:</p>
+                        <p className="mt-1 whitespace-pre-wrap">{taskData.result.error}</p>
+                      </div>
+                    ) : (
+                      <div>
+                        {taskData.result.results && (
+                          <div className="space-y-4">
+                            <div className="mt-1 overflow-y-auto max-h-screen">
+                              {formatResults(taskData.result.results)}
+                            </div>
+                          </div>
+                        )}
+                        {taskData.result.file_name && (
+                          <div className={`mt-4 p-3 rounded ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                            <p className="flex items-center">
+                              <span className={`font-medium mr-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Analysis File:</span>
+                              <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>{taskData.result.file_name}</span>
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
