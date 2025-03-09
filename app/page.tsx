@@ -108,7 +108,7 @@ export default function Home() {
   const fetchTaskStatus = async () => {
     try {
       setFetchingStatus(true);
-      const response = await fetch("http://16.16.65.132:8002/task_status/", {
+      const response = await fetch("https://dibyatc.me/task_status/", {
         method: 'GET',
       });
 
@@ -174,7 +174,7 @@ export default function Home() {
 
     try {
       // First API call to start the task
-      const response = await fetch('http://16.16.65.132:5001/start_task/', {
+      const response = await fetch('https://dibyatc.me/start_task/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
