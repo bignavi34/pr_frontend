@@ -1,4 +1,4 @@
-"use client"
+"use client";
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -53,7 +53,6 @@ export default function Home() {
     if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
       setDarkMode(true);
     }
-
     const savedMode = localStorage.getItem('darkMode');
     if (savedMode !== null) {
       setDarkMode(savedMode === 'true');
@@ -84,13 +83,10 @@ export default function Home() {
   // Helper function to parse and extract JSON from string if present
   const extractJsonFromString = (text: string): any => {
     try {
-      // Look for JSON pattern in the string
       const jsonMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
       if (jsonMatch && jsonMatch[1]) {
         return JSON.parse(jsonMatch[1]);
       }
-
-      // If no JSON in code blocks, try to parse the whole string
       return JSON.parse(text);
     } catch (e) {
       console.log("Not valid JSON or no JSON found in string");
@@ -111,36 +107,29 @@ export default function Home() {
       const response = await fetch("https://dibyatc.me/task_status/", {
         method: 'GET',
       });
-
       const data = await response.json();
       console.log('Task status data:', data);
 
-      // Create a properly structured result object
       let resultObj: Result = {
         results: null,
         file_name: null,
         error: null
       };
 
-      // Handle nested result structures
       if (data && typeof data === 'object') {
         if (data.result) {
           if (typeof data.result === 'string') {
             resultObj.results = data.result;
           } else if (typeof data.result === 'object') {
-            // Handle direct result properties
             if (data.result.error !== undefined) {
               resultObj.error = data.result.error;
             }
             if (data.result.file_name !== undefined) {
               resultObj.file_name = data.result.file_name;
             }
-
-            // Handle the case where results is an array or a string
             if (Array.isArray(data.result.results)) {
               resultObj.results = data.result.results;
             } else if (typeof data.result.results === 'string') {
-              // Try to parse JSON from the string if present
               const extractedJson = extractJsonFromString(data.result.results);
               resultObj.results = extractedJson || data.result.results;
             } else {
@@ -148,7 +137,6 @@ export default function Home() {
             }
           }
         } else if (Array.isArray(data.results)) {
-          // Handle the case where results is directly at the top level
           resultObj.results = data.results;
         }
 
@@ -157,6 +145,11 @@ export default function Home() {
           status: String(data.status || ''),
           result: resultObj
         });
+
+        // If the task status is still pending, poll again every 5 seconds
+        if (data.status === 'PENDING') {
+          setTimeout(fetchTaskStatus, 5000);
+        }
       }
     } catch (error) {
       console.error("Task status error:", error);
@@ -173,7 +166,6 @@ export default function Home() {
     setExpandedIssues({});
 
     try {
-      // First API call to start the task
       const response = await fetch('https://dibyatc.me/start_task/', {
         method: 'POST',
         headers: {
@@ -189,16 +181,15 @@ export default function Home() {
       const data = await response.json();
       setIsSuccess(true);
 
-      // Handle the response correctly - convert to string if it's an object
       if (typeof data === 'object') {
         setMessage(data.message || JSON.stringify(data));
       } else {
         setMessage(String(data));
       }
 
-      // Set a 10-second delay before fetching task status
       setMessage(prev => prev + "\nFetching results after 10 seconds...");
 
+      // Wait for 10 seconds before starting the polling
       setTimeout(() => {
         fetchTaskStatus();
       }, 10000);
@@ -211,11 +202,9 @@ export default function Home() {
     }
   };
 
-  // Process results to extract issues if they exist
   const processResults = (results: any): { issues: Issue[] | null, otherData: any } => {
     if (!results) return { issues: null, otherData: null };
 
-    // Check if results is a string that contains JSON
     if (typeof results === 'string') {
       const extractedJson = extractJsonFromString(results);
       if (extractedJson && extractedJson.issues && Array.isArray(extractedJson.issues)) {
@@ -227,19 +216,15 @@ export default function Home() {
       return { issues: null, otherData: results };
     }
 
-    // Check if results is an array with objects that might contain issues
     if (Array.isArray(results) && results.length > 0) {
       for (const item of results) {
         if (typeof item === 'object' && item !== null) {
-          // Check if the item itself has an issues array
           if (item.issues && Array.isArray(item.issues)) {
             return {
               issues: item.issues,
               otherData: { ...item, issues: undefined }
             };
           }
-
-          // Check if the item has a results property that might contain issues
           if (item.results) {
             const extractedJson = typeof item.results === 'string'
               ? extractJsonFromString(item.results)
@@ -256,7 +241,6 @@ export default function Home() {
       }
     }
 
-    // Check if results is an object with an issues array
     if (typeof results === 'object' && results !== null) {
       if (results.issues && Array.isArray(results.issues)) {
         return {
@@ -269,11 +253,9 @@ export default function Home() {
     return { issues: null, otherData: results };
   };
 
-  // Render issue cards with collapsible details
   const renderIssueCards = (issues: Issue[]) => {
     if (!issues || issues.length === 0) return null;
 
-    // Group issues by type
     const issuesByType: Record<string, Issue[]> = {};
     issues.forEach(issue => {
       if (!issuesByType[issue.type]) {
@@ -287,7 +269,6 @@ export default function Home() {
         <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
           Issues Found ({issues.length})
         </h3>
-
         {Object.entries(issuesByType).map(([type, typeIssues]) => (
           <div key={type} className={`rounded-lg overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow`}>
             <div className={`px-4 py-3 ${darkMode ? 'bg-indigo-900/50' : 'bg-indigo-100'}`}>
@@ -299,7 +280,6 @@ export default function Home() {
               {typeIssues.map((issue, index) => {
                 const issueId = `${type}-${index}`;
                 const isExpanded = expandedIssues[issueId] || false;
-
                 return (
                   <div
                     key={issueId}
@@ -321,7 +301,6 @@ export default function Home() {
                         {isExpanded ? <FaChevronUp /> : <FaChevronDown />}
                       </div>
                     </div>
-
                     {isExpanded && (
                       <div className={`mt-3 p-3 rounded ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
                         <p className={`mb-2 text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
@@ -342,17 +321,12 @@ export default function Home() {
     );
   };
 
-  // Format the results for display
   const formatResults = (results: any): React.ReactNode => {
     if (!results) return null;
-
-    // Process results to extract issues if they exist
     const { issues, otherData } = processResults(results);
-
     return (
       <div className="space-y-6">
         {issues && issues.length > 0 && renderIssueCards(issues)}
-
         {otherData && (
           <div className="space-y-2">
             <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
@@ -378,7 +352,6 @@ export default function Home() {
         <meta name="description" content="Analyze GitHub pull requests with ease" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
-
       <div className="container mx-auto px-4 py-12">
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -388,17 +361,13 @@ export default function Home() {
         >
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center">
-              <motion.div
-                whileHover={{ rotate: 360 }}
-                transition={{ duration: 0.7 }}
-              >
+              <motion.div whileHover={{ rotate: 360 }} transition={{ duration: 0.7 }}>
                 <FaGithub className={`text-5xl ${darkMode ? 'text-purple-400' : 'text-indigo-600'} mr-4`} />
               </motion.div>
               <h1 className={`text-4xl font-bold tracking-tight ${darkMode ? 'text-white' : 'text-gray-800'}`}>
                 PR <span className={darkMode ? 'text-purple-400' : 'text-indigo-600'}>Analyzer</span>
               </h1>
             </div>
-
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={toggleDarkMode}
@@ -408,7 +377,6 @@ export default function Home() {
               {darkMode ? <FaSun /> : <FaMoon />}
             </motion.button>
           </div>
-
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -424,7 +392,6 @@ export default function Home() {
                 Submit the details below to start analyzing
               </p>
             </div>
-
             <form onSubmit={handleSubmit} className="p-8">
               <div className="mb-6">
                 <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`} htmlFor="repoUrl">
@@ -433,8 +400,8 @@ export default function Home() {
                 <div className="relative">
                   <input
                     className={`appearance-none border rounded-lg w-full py-3 px-4 pl-10 leading-tight focus:outline-none focus:ring-2 transition-all duration-200 ${darkMode
-                      ? 'bg-gray-700 border-gray-600 text-white focus:ring-purple-500 focus:border-transparent'
-                      : 'border-gray-300 text-gray-700 focus:ring-indigo-500 focus:border-transparent'
+                        ? 'bg-gray-700 border-gray-600 text-white focus:ring-purple-500 focus:border-transparent'
+                        : 'border-gray-300 text-gray-700 focus:ring-indigo-500 focus:border-transparent'
                       }`}
                     id="repoUrl"
                     type="text"
@@ -446,7 +413,6 @@ export default function Home() {
                   <FaGithub className={`absolute left-3 top-3.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
                 </div>
               </div>
-
               <div className="mb-6">
                 <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`} htmlFor="prNumber">
                   PR Number
@@ -454,8 +420,8 @@ export default function Home() {
                 <div className="relative">
                   <input
                     className={`appearance-none border rounded-lg w-full py-3 px-4 pl-10 leading-tight focus:outline-none focus:ring-2 transition-all duration-200 ${darkMode
-                      ? 'bg-gray-700 border-gray-600 text-white focus:ring-purple-500 focus:border-transparent'
-                      : 'border-gray-300 text-gray-700 focus:ring-indigo-500 focus:border-transparent'
+                        ? 'bg-gray-700 border-gray-600 text-white focus:ring-purple-500 focus:border-transparent'
+                        : 'border-gray-300 text-gray-700 focus:ring-indigo-500 focus:border-transparent'
                       }`}
                     id="prNumber"
                     type="number"
@@ -467,7 +433,6 @@ export default function Home() {
                   <span className={`absolute left-3 top-3.5 font-semibold ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>#</span>
                 </div>
               </div>
-
               <div className="mb-8">
                 <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`} htmlFor="githubToken">
                   GitHub Token (Optional)
@@ -475,8 +440,8 @@ export default function Home() {
                 <div className="relative">
                   <input
                     className={`appearance-none border rounded-lg w-full py-3 px-4 pl-10 leading-tight focus:outline-none focus:ring-2 transition-all duration-200 ${darkMode
-                      ? 'bg-gray-700 border-gray-600 text-white focus:ring-purple-500 focus:border-transparent'
-                      : 'border-gray-300 text-gray-700 focus:ring-indigo-500 focus:border-transparent'
+                        ? 'bg-gray-700 border-gray-600 text-white focus:ring-purple-500 focus:border-transparent'
+                        : 'border-gray-300 text-gray-700 focus:ring-indigo-500 focus:border-transparent'
                       }`}
                     id="githubToken"
                     type="password"
@@ -501,13 +466,12 @@ export default function Home() {
                   </a>
                 </div>
               </div>
-
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 className={`w-full font-medium py-3 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-opacity-50 transition-colors duration-300 ${darkMode
-                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white focus:ring-purple-500 hover:from-purple-700 hover:to-indigo-700'
-                  : 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white focus:ring-indigo-500 hover:from-indigo-700 hover:to-purple-700'
+                    ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white focus:ring-purple-500 hover:from-purple-700 hover:to-indigo-700'
+                    : 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white focus:ring-indigo-500 hover:from-indigo-700 hover:to-purple-700'
                   } ${loading ? 'opacity-80 cursor-not-allowed' : ''}`}
                 type="submit"
                 disabled={loading}
@@ -521,7 +485,6 @@ export default function Home() {
               </motion.button>
             </form>
           </motion.div>
-
           <AnimatePresence>
             {message && (
               <motion.div
@@ -530,12 +493,12 @@ export default function Home() {
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.5 }}
                 className={`mt-6 p-4 rounded-lg shadow-md ${darkMode
-                  ? (isSuccess
-                    ? 'bg-green-900/30 border-l-4 border-green-500 text-green-300'
-                    : 'bg-red-900/30 border-l-4 border-red-500 text-red-300')
-                  : (isSuccess
-                    ? 'bg-gradient-to-r from-emerald-50 to-teal-50 border-l-4 border-emerald-500 text-emerald-700'
-                    : 'bg-gradient-to-r from-red-50 to-orange-50 border-l-4 border-red-500 text-red-700')
+                    ? isSuccess
+                      ? 'bg-green-900/30 border-l-4 border-green-500 text-green-300'
+                      : 'bg-red-900/30 border-l-4 border-red-500 text-red-300'
+                    : isSuccess
+                      ? 'bg-gradient-to-r from-emerald-50 to-teal-50 border-l-4 border-emerald-500 text-emerald-700'
+                      : 'bg-gradient-to-r from-red-50 to-orange-50 border-l-4 border-red-500 text-red-700'
                   }`}
                 role="alert"
               >
@@ -550,7 +513,6 @@ export default function Home() {
               </motion.div>
             )}
           </AnimatePresence>
-
           <AnimatePresence>
             {taskData && (
               <motion.div
@@ -559,8 +521,8 @@ export default function Home() {
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.5 }}
                 className={`mt-6 p-6 rounded-lg shadow-md ${darkMode
-                  ? 'bg-indigo-900/30 border border-indigo-700 text-indigo-100'
-                  : 'bg-white border border-indigo-100 text-indigo-900'
+                    ? 'bg-indigo-900/30 border border-indigo-700 text-indigo-100'
+                    : 'bg-white border border-indigo-100 text-indigo-900'
                   }`}
                 role="alert"
               >
@@ -569,12 +531,20 @@ export default function Home() {
                     Analysis Results
                   </h3>
                   <div className="flex items-center space-x-3">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${taskData.status === 'SUCCESS'
-                        ? (darkMode ? 'bg-green-900/50 text-green-300' : 'bg-green-100 text-green-800')
-                        : taskData.status === 'PENDING'
-                          ? (darkMode ? 'bg-yellow-900/50 text-yellow-300' : 'bg-yellow-100 text-yellow-800')
-                          : (darkMode ? 'bg-red-900/50 text-red-300' : 'bg-red-100 text-red-800')
-                      }`}>
+                    <span
+                      className={`px-3 py-1 rounded-full text-xs font-medium ${taskData.status === 'SUCCESS'
+                          ? darkMode
+                            ? 'bg-green-900/50 text-green-300'
+                            : 'bg-green-100 text-green-800'
+                          : taskData.status === 'PENDING'
+                            ? darkMode
+                              ? 'bg-yellow-900/50 text-yellow-300'
+                              : 'bg-yellow-100 text-yellow-800'
+                            : darkMode
+                              ? 'bg-red-900/50 text-red-300'
+                              : 'bg-red-100 text-red-800'
+                        }`}
+                    >
                       {taskData.status}
                     </span>
                     <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -582,7 +552,6 @@ export default function Home() {
                     </span>
                   </div>
                 </div>
-
                 {taskData.result && (
                   <div className="mt-2">
                     {taskData.result.error ? (
@@ -602,8 +571,12 @@ export default function Home() {
                         {taskData.result.file_name && (
                           <div className={`mt-4 p-3 rounded ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
                             <p className="flex items-center">
-                              <span className={`font-medium mr-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Analysis File:</span>
-                              <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>{taskData.result.file_name}</span>
+                              <span className={`font-medium mr-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                Analysis File:
+                              </span>
+                              <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>
+                                {taskData.result.file_name}
+                              </span>
                             </p>
                           </div>
                         )}
@@ -614,7 +587,6 @@ export default function Home() {
               </motion.div>
             )}
           </AnimatePresence>
-
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -624,7 +596,6 @@ export default function Home() {
             <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
               © {new Date().getFullYear()} PR Analyzer • Built with Next.js & FastAPI
             </p>
-
             <div className="flex justify-center mt-3 space-x-4">
               <motion.a
                 whileHover={{ y: -2 }}
